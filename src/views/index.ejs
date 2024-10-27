@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tunes</title>
+</head>
+<body>
+  <form>
+    <input type="text" placeholder="Paste a Youtube link">
+    <button>Download</button>
+  </form>
+  <h2>Downloaded:</h2>
+</body>
+</html>
+<script>
+  function loadSongs() {
+    document.querySelectorAll('.song-item').forEach(el => el.remove());
+    fetch('/songs')
+      .then(res => res.json())
+      .then(data => data.forEach(renderSongItem))
+      .catch(err => console.error(err));
+  }
+
+  function renderSongItem(song) {
+    song = song.replace(/\\/g, '/');  // Parse Windows path
+    const parsedSongName = /^.*[\/|\/](.*?)\.mp3$/.exec(song)[1]; // Extract song name
+    const li = document.createElement('li');
+    li.classList.add('song-item');
+    li.id = parsedSongName;
+    li.innerHTML = `
+      <span>${parsedSongName}</span>
+      <button onclick="playSong('${parsedSongName}')">Play</button>
+    `;
+    li.onclick = () => {
+      navigator.clipboard.writeText(song);
+    }
+    document.body.appendChild(li);
+  }
+
+  let audio;
+  function playSong(song) {
+    if (audio) audio.pause();
+    fetch('/downloads/' + song + '.mp3')
+      .then(res => res.blob())
+      .then(blob => {
+        resetButtons(song);
+        audio = new Audio(URL.createObjectURL(blob));
+        audio.play();
+
+        const button = document.querySelector(`#${song} button`);
+        button.textContent = 'Stop';
+        button.onclick = () => {
+          resetButtons();
+          button.onclick = () => playSong(song);
+        };
+      })
+      .catch(err => console.error(err));
+  }
+
+  function resetButtons(ignore) {
+    const buttons = document.querySelectorAll(`li:not(#${ignore}) button`);
+    buttons.forEach(button => button.textContent = 'Play');
+    if (audio) audio.pause();
+    audio = null;
+  }
+
+  const form = document.querySelector('form');
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const url = document.querySelector('input').value;
+    if (!url) return alert('Please enter a valid URL');
+    fetch('/download', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ url })
+    })
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to download');
+      return res.json();
+    })
+    .then(data => {
+      if (data.error) return alert(data.error);
+      loadSongs();
+    })
+    .catch(err => alert(err));
+  });
+
+  loadSongs();
+</script>
